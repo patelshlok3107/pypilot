@@ -43,6 +43,21 @@ class OfflineAITutorService:
     - Use ```python for code snippets.
     - Be encouraging."""
 
+    def _build_language_instruction(self, language: str | None) -> str:
+        """Create a strict response language instruction for the tutor."""
+        if not language:
+            return ""
+        normalized = language.strip()
+        if not normalized:
+            return ""
+        lowered = normalized.lower()
+        if lowered in {"auto", "same language", "the same language used by the user"}:
+            return "Respond in the same language used by the user's latest message."
+        return (
+            f"Always respond in {normalized}. "
+            "If the user later asks in a different language, switch to that requested language."
+        )
+
     async def _call_ollama(self, prompt: str, context: str = "", user_key: str = "global") -> str:
         """
         Call local Ollama model via HTTP API.
@@ -214,7 +229,14 @@ Format your response exactly like this:
         parsed = self._parse_practice_response(content)
         return parsed
 
-    async def chat_stream(self, user_message: str, mode: str = "general", user_name: str | None = None, user_key: str = "global"):
+    async def chat_stream(
+        self,
+        user_message: str,
+        mode: str = "general",
+        language: str | None = None,
+        user_name: str | None = None,
+        user_key: str = "global",
+    ):
         """
         Stream chat responses from AI tutor.
         Yields chunks of text as they are generated.
@@ -231,8 +253,11 @@ Format your response exactly like this:
         prompt = mode_prompts.get(mode, "") + user_message
         # If user_name provided, include it in the system prompt so assistant can personalize responses
         system_prompt = self.system_prompt
+        language_instruction = self._build_language_instruction(language)
+        if language_instruction:
+            system_prompt = f"{system_prompt}\nResponse-Language: {language_instruction}"
         if user_name:
-            system_prompt = f"{self.system_prompt}\nUser-Name: {user_name}"
+            system_prompt = f"{system_prompt}\nUser-Name: {user_name}"
 
         try:
             async with httpx.AsyncClient(timeout=120) as client:
@@ -299,7 +324,14 @@ Format your response exactly like this:
         except Exception as e:
             yield f"Error: {str(e)}"
 
-    async def chat(self, user_message: str, mode: str = "general", user_name: str | None = None, user_key: str = "global") -> str:
+    async def chat(
+        self,
+        user_message: str,
+        mode: str = "general",
+        language: str | None = None,
+        user_name: str | None = None,
+        user_key: str = "global",
+    ) -> str:
         """
         General chat with the AI tutor.
         Modes: general, explain, debug, practice
@@ -315,8 +347,11 @@ Format your response exactly like this:
 
         # Include user_name in system prompt for personalization
         system_prompt = self.system_prompt
+        language_instruction = self._build_language_instruction(language)
+        if language_instruction:
+            system_prompt = f"{system_prompt}\nResponse-Language: {language_instruction}"
         if user_name:
-            system_prompt = f"{self.system_prompt}\nUser-Name: {user_name}"
+            system_prompt = f"{system_prompt}\nUser-Name: {user_name}"
 
         response = await self._call_ollama(prompt, context=system_prompt, user_key=user_key)
         self._add_to_history("user", user_message, user_key)

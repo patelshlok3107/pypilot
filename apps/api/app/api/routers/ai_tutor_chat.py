@@ -32,10 +32,22 @@ from app.services.product_growth import product_growth_service
 router = APIRouter(prefix="/ai-tutor", tags=["ai-tutor"])
 
 
+def _is_local_tutor_unavailable(content: str) -> bool:
+    text = (content or "").lower()
+    return (
+        "local ai tutor is not available" in text
+        or "local ai tutor unavailable" in text
+        or "ollama is not running" in text
+        or "confirm ollama is running" in text
+        or "ollama serve" in text
+    )
+
+
 class ChatRequest(BaseModel):
     """Chat message request"""
     message: str
     mode: str = "general"  # general, explain, debug, practice
+    language: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -88,8 +100,15 @@ async def chat_with_tutor(
             user_key = str(current_user.id)
 
         response = await offline_ai_tutor_service.chat(
-            payload.message.strip(), mode=payload.mode, user_name=user_name, user_key=user_key
+            payload.message.strip(),
+            mode=payload.mode,
+            language=payload.language,
+            user_name=user_name,
+            user_key=user_key,
         )
+
+        if _is_local_tutor_unavailable(response):
+            raise HTTPException(status_code=503, detail="Local AI tutor is currently unavailable")
 
         return ChatResponse(
             role="assistant",
@@ -137,7 +156,11 @@ async def chat_stream_with_tutor(payload: ChatRequest, current_user: User | None
                 user_key = str(current_user.id)
 
             async for chunk in offline_ai_tutor_service.chat_stream(
-                payload.message.strip(), mode=payload.mode, user_name=user_name, user_key=user_key
+                payload.message.strip(),
+                mode=payload.mode,
+                language=payload.language,
+                user_name=user_name,
+                user_key=user_key,
             ):
                 if chunk:
                     yield chunk

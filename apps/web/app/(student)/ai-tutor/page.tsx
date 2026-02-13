@@ -37,6 +37,21 @@ interface LanguageOption {
   promptName: string;
 }
 
+interface LocalTutorChatResponse {
+  role?: string;
+  content?: string;
+  mode?: string;
+  status?: string;
+}
+
+interface PoeChatResponse {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+}
+
 type BrowserSpeechRecognitionResult = {
   isFinal: boolean;
   0?: {
@@ -187,13 +202,13 @@ function detectLanguageCode(text: string): string {
   const value = text.trim();
   const lower = value.toLowerCase();
   const marathiHints = [
-    "\u0906\u0939\u0947", // आहे
-    "\u0924\u0941\u092e\u094d\u0939\u0940", // तुम्ही
-    "\u092e\u093e\u091d", // माझ
-    "\u0915\u093e\u092f", // काय
-    "\u0928\u093e\u0939\u0940", // नाही
-    "\u0915\u0930\u093e", // करा
-    "\u0936\u093f\u0915", // शिक
+    "\u0906\u0939\u0947", // aahe
+    "\u0924\u0941\u092e\u094d\u0939\u0940", // tumhi
+    "\u092e\u093e\u091d", // maajh
+    "\u0915\u093e\u092f", // kaay
+    "\u0928\u093e\u0939\u0940", // naahi
+    "\u0915\u0930\u093e", // karaa
+    "\u0936\u093f\u0915", // shik
   ];
 
   if (!value) return "en-US";
@@ -223,8 +238,53 @@ function getLanguageOption(code: string): LanguageOption {
   return LANGUAGE_BY_CODE.get(code) || DEFAULT_LANGUAGE;
 }
 
+function getAutoRecognitionLanguageCode(): string {
+  if (typeof navigator === "undefined") {
+    return DEFAULT_LANGUAGE.recognitionCode;
+  }
+
+  const browserLanguage = (navigator.language || "").trim();
+  if (!browserLanguage) {
+    return DEFAULT_LANGUAGE.recognitionCode;
+  }
+
+  const exact = LANGUAGE_OPTIONS.find(
+    (option) =>
+      option.code !== "auto" &&
+      option.recognitionCode.toLowerCase() === browserLanguage.toLowerCase(),
+  );
+  if (exact) {
+    return exact.recognitionCode;
+  }
+
+  const browserPrefix = browserLanguage.split("-")[0]?.toLowerCase();
+  if (!browserPrefix) {
+    return DEFAULT_LANGUAGE.recognitionCode;
+  }
+
+  const prefixMatch = LANGUAGE_OPTIONS.find(
+    (option) =>
+      option.code !== "auto" &&
+      option.recognitionCode.toLowerCase().startsWith(browserPrefix),
+  );
+
+  return prefixMatch?.recognitionCode || DEFAULT_LANGUAGE.recognitionCode;
+}
+
 function stripCodeBlocksForSpeech(text: string): string {
   return text.replace(/```[\s\S]*?```/g, " Code example is shown in chat. ").replace(/\s+/g, " ").trim();
+}
+
+function isLocalTutorUnavailableMessage(content: string): boolean {
+  const text = content.toLowerCase();
+  return (
+    text.includes("local ai tutor is not available") ||
+    text.includes("local ai tutor unavailable") ||
+    text.includes("ollama is not running") ||
+    text.includes("confirm ollama is running") ||
+    text.includes("run: ollama serve") ||
+    text.includes("ollama serve")
+  );
 }
 
 function getSpeechRecognitionConstructor(): BrowserSpeechRecognitionConstructor | null {
@@ -422,36 +482,77 @@ export default function AITutorPage() {
       setVoiceStatus("");
 
       try {
-        const response = await fetch("https://api.poe.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer A__c0aKjBgQBDLQf4_NqiGhvUNdsAhILIFM69MrzGR0",
-          },
-          body: JSON.stringify({
-            model: "gpt-3.5-turbo",
-            messages: [
-              {
-                role: "system",
-                content:
-                  `You are a helpful Python programming tutor. Explain concepts clearly, provide code examples when helpful, and encourage learning. Format code blocks with \\\`\\\`\\\`python for syntax highlighting. Always respond in ${selectedLanguage.promptName}. If the user switches language, follow the user's latest language.`,
-              },
-              ...existingMessages.map((message) => ({ role: message.role, content: message.content })),
-              { role: "user", content },
-            ],
-            stream: false,
-          }),
-        });
+        let assistantContent = "";
 
-        if (!response.ok) {
-          throw new Error(`API Error: ${response.status}`);
+        try {
+          const backendResponse = await fetch("/api/ai-tutor/chat", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              message: content,
+              mode: "general",
+              language: selectedLanguage.promptName,
+            }),
+          });
+
+          if (!backendResponse.ok) {
+            throw new Error(`Backend API Error: ${backendResponse.status}`);
+          }
+
+          const backendData = (await backendResponse.json()) as LocalTutorChatResponse;
+          if (!backendData.content || typeof backendData.content !== "string") {
+            throw new Error("Invalid backend tutor response");
+          }
+          if (backendData.status && backendData.status !== "success") {
+            throw new Error(backendData.content);
+          }
+          if (isLocalTutorUnavailableMessage(backendData.content)) {
+            throw new Error("Local tutor unavailable");
+          }
+
+          assistantContent = backendData.content;
+        } catch (backendError) {
+          console.warn("Backend AI tutor request failed, falling back to Poe API.", backendError);
+
+          const poeResponse = await fetch("https://api.poe.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer A__c0aKjBgQBDLQf4_NqiGhvUNdsAhILIFM69MrzGR0",
+            },
+            body: JSON.stringify({
+              model: "gpt-3.5-turbo",
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    `You are a helpful Python programming tutor. Explain concepts clearly, provide code examples when helpful, and encourage learning. Format code blocks with \\\`\\\`\\\`python for syntax highlighting. Always respond in ${selectedLanguage.promptName}. If the user switches language, follow the user's latest language.`,
+                },
+                ...existingMessages.map((message) => ({ role: message.role, content: message.content })),
+                { role: "user", content },
+              ],
+              stream: false,
+            }),
+          });
+
+          if (!poeResponse.ok) {
+            throw new Error(`Poe API Error: ${poeResponse.status}`);
+          }
+
+          const poeData = (await poeResponse.json()) as PoeChatResponse;
+          assistantContent = poeData.choices?.[0]?.message?.content || "";
+          if (!assistantContent.trim()) {
+            throw new Error("Empty response from fallback AI provider");
+          }
         }
 
-        const data = await response.json();
         const assistantMessage: Message = {
           id: makeId(),
           role: "assistant",
-          content: data.choices[0].message.content,
+          content: assistantContent,
           timestamp: new Date().toISOString(),
           languageCode: selectedLanguage.code,
         };
@@ -504,7 +605,7 @@ export default function AITutorPage() {
       recognition.interimResults = true;
       recognition.lang =
         voiceInputLanguage === "auto"
-          ? DEFAULT_LANGUAGE.recognitionCode
+          ? getAutoRecognitionLanguageCode()
           : getLanguageOption(voiceInputLanguage).recognitionCode;
 
       let finalTranscript = "";
