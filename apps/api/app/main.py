@@ -37,6 +37,20 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+@app.get("/")
+async def root():
+    return {
+        "message": "PyPilot API is running",
+        "status": "ok",
+        "version": "1.0.0"
+    }
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
