@@ -1,0 +1,7 @@
+ Sure, here is a simple "Hello, World!" program written in Python:
+
+```python
+print("Hello, World!")
+```
+
+When you run this program, it will print the text "Hello, World!" to the console.
