@@ -1,0 +1,8 @@
+﻿{
+  "projects": [
+    {
+      "path": "apps/web",
+      "framework": "nextjs"
+    }
+  ]
+}
