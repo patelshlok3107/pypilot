@@ -1,0 +1,8 @@
+﻿{
+  \"projects\": [
+    {
+      \"path\": \".\",
+      \"framework\": \"nextjs\"
+    }
+  ]
+}
