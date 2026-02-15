@@ -1,0 +1,26 @@
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
+
+
+LEGACY_COMPAT_QUERIES = [
+    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500)",
+    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS oauth_provider VARCHAR(50)",
+    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS oauth_id VARCHAR(255)",
+    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS oauth_access_token VARCHAR(1000)",
+    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0",
+    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1",
+    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS streak_days INTEGER DEFAULT 0",
+    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS last_active_date DATE",
+    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()",
+    "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()",
+    "ALTER TABLE IF EXISTS subscriptions ADD COLUMN IF NOT EXISTS plan VARCHAR(50) DEFAULT 'pro'",
+    "ALTER TABLE IF EXISTS subscriptions ADD COLUMN IF NOT EXISTS status VARCHAR(40) DEFAULT 'incomplete'",
+    "ALTER TABLE IF EXISTS subscriptions ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMP WITHOUT TIME ZONE",
+]
+
+
+def ensure_schema_compatibility(engine: Engine) -> None:
+    with engine.begin() as connection:
+        for query in LEGACY_COMPAT_QUERIES:
+            connection.execute(text(query))

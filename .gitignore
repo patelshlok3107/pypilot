@@ -1,0 +1,30 @@
+﻿# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Node
+node_modules/
+.next/
+out/
+
+# Environment
+.env
+.env.*
+!.env.example
+.venv/
+.venv*/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Coverage
+.coverage
+htmlcov/
+
+# Build
+dist/
+build/
